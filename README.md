@@ -42,8 +42,8 @@ agent ──POST /mcp──▶ mcp-perplexity (container)
 ### ติดตั้ง
 
 ```bash
-git clone <URL ของ repo นี้>
-cd <โฟลเดอร์ของ repo>
+git clone https://github.com/chacharin/mcp-perplexity.git
+cd mcp-perplexity
 cp .env.example .env                  # แล้วใส่ PERPLEXITY_API_KEY
 docker network create agent_network   # ครั้งแรกครั้งเดียว — ชื่ออื่นตั้งได้ด้วย DOCKER_NETWORK
 docker compose up -d --build
