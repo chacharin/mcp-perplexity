@@ -1,92 +1,92 @@
 # mcp-perplexity-docker
 
-รัน **Perplexity MCP server ฉบับทางการ** ([`@perplexity-ai/mcp-server`](https://www.npmjs.com/package/@perplexity-ai/mcp-server)) ใน Docker แบบ **streamable HTTP**
-เพื่อให้ AI agent ที่รองรับ MCP (เช่น Hermes) ค้นเว็บและค้นคว้าผ่าน Perplexity ได้ โดยไม่ต้องติดตั้ง Node.js บนเครื่อง
+ชุดติดตั้ง **Perplexity MCP server ฉบับทางการ** ([`@perplexity-ai/mcp-server`](https://www.npmjs.com/package/@perplexity-ai/mcp-server)) บน Docker ในโหมด **streamable HTTP**
+ช่วยให้ AI agent ที่รองรับ MCP เช่น Hermes ค้นหาข้อมูลบนเว็บผ่าน Perplexity ได้ทันที โดยไม่ต้องติดตั้ง Node.js บนเครื่อง
 
 ผู้พัฒนา: **Chacharin Lertyosbordin**
 
-> โปรเจกต์นี้คือการบรรจุ (packaging) และตั้งค่าให้พร้อมใช้ ตัว MCP server พัฒนาโดย Perplexity AI
-> ภายใต้สัญญาอนุญาต MIT โปรเจกต์นี้ไม่ได้เป็นผลงานทางการหรือได้รับการรับรองจาก Perplexity
+> โปรเจกต์นี้จัดเตรียม Docker และการตั้งค่าให้พร้อมใช้งานเท่านั้น ส่วนตัว MCP server พัฒนาโดย Perplexity AI
+> ภายใต้สัญญาอนุญาต MIT และโปรเจกต์นี้ไม่ใช่ผลงานทางการของ Perplexity หรือได้รับการรับรองจาก Perplexity
 
-## เครื่องมือ
+## เครื่องมือที่มีให้
 
-| เครื่องมือ | เรียก | ใช้เมื่อ | ความเร็ว / ค่าใช้จ่าย |
+| เครื่องมือ | API ที่ใช้ | เหมาะกับงาน | ความเร็วและค่าใช้จ่าย |
 |---|---|---|---|
-| `perplexity_search` | Search API | ต้องการรายการผลค้นหาดิบ (ชื่อหน้า, URL, ข้อความย่อ, วันที่) เลือกจำนวนผล ประเทศ และช่วงเวลาได้ | เร็ว · ถูกที่สุด |
-| `perplexity_ask` | Agent API (preset `fast`) | ถามตอบทั่วไปพร้อมอ้างอิง | เร็ว |
-| `perplexity_reason` | Agent API (preset `medium`) | วิเคราะห์เป็นขั้นตอนพร้อมค้นเว็บ | ปานกลาง |
-| `perplexity_research` | Agent API (preset `high`) | ค้นเชิงลึกจากหลายแหล่ง | ช้า (อาจหลายนาที) · แพงที่สุด |
+| `perplexity_search` | Search API | ต้องการผลการค้นหาตามต้นฉบับ ได้แก่ ชื่อหน้าเว็บ URL ข้อความโดยย่อ และวันที่ โดยกำหนดจำนวนผล ประเทศ และช่วงเวลาได้ | เร็ว ราคาถูกที่สุด |
+| `perplexity_ask` | Agent API (preset `fast`) | ถามคำถามทั่วไปและต้องการคำตอบพร้อมแหล่งอ้างอิง | เร็ว |
+| `perplexity_reason` | Agent API (preset `medium`) | วิเคราะห์ประเด็นอย่างเป็นขั้นตอนโดยอ้างอิงข้อมูลจากเว็บ | ปานกลาง |
+| `perplexity_research` | Agent API (preset `high`) | ค้นคว้าเชิงลึกจากหลายแหล่งข้อมูล | ช้า อาจใช้เวลาหลายนาที และราคาสูงที่สุด |
 
-ทุกการเรียกคิดค่าใช้จ่ายกับ `PERPLEXITY_API_KEY` ของคุณ
+การเรียกใช้เครื่องมือทุกครั้งจะคิดค่าใช้จ่ายกับ `PERPLEXITY_API_KEY` ของคุณ
 
 ## หลักการทำงาน
 
 ```
 agent ──POST /mcp──▶ mcp-perplexity (container)
-                       ① ตรวจ Host header กับ ALLOWED_HOSTS (ไม่ตรง → HTTP 421)
-                       ② MCP SDK เลือกเครื่องมือ
-                       ③ เรียก https://api.perplexity.ai ด้วย PERPLEXITY_API_KEY
-                     ◀── คืนผลให้ agent
+                       ① ตรวจสอบ Host header กับรายชื่อใน ALLOWED_HOSTS (หากไม่ตรงจะตอบกลับ HTTP 421)
+                       ② MCP SDK ส่งคำขอไปยังเครื่องมือที่เรียก
+                       ③ เครื่องมือเรียก https://api.perplexity.ai ด้วย PERPLEXITY_API_KEY
+                     ◀── ส่งผลลัพธ์กลับไปยัง agent
 ```
 
-ไม่เก็บสถานะ ไม่มีฐานข้อมูล ไม่ mount โฟลเดอร์ใด ๆ
+ระบบนี้ไม่เก็บสถานะการทำงาน ไม่มีฐานข้อมูล และไม่ต้อง mount โฟลเดอร์ใด ๆ
 
-## เริ่มใช้งาน
+## เริ่มต้นใช้งาน
 
-### สิ่งที่ต้องมี
+### สิ่งที่ต้องเตรียม
 
-- **Docker** (Docker Desktop หรือ Docker Engine) — ไม่ต้องติดตั้ง Node.js
-- **อินเทอร์เน็ตตอน build ครั้งแรก** — ดึง image ของ Node และแพ็กเกจจาก npm
-- **Perplexity API key** จาก https://console.perplexity.ai
+- **Docker** (Docker Desktop หรือ Docker Engine) โดยไม่ต้องติดตั้ง Node.js
+- **การเชื่อมต่ออินเทอร์เน็ตระหว่าง build ครั้งแรก** เพื่อดาวน์โหลด image ของ Node และแพ็กเกจจาก npm
+- **Perplexity API key** ขอได้ที่ https://console.perplexity.ai
 
-### ติดตั้ง
+### ขั้นตอนการติดตั้ง
 
 ```bash
 git clone https://github.com/chacharin/mcp-perplexity.git
 cd mcp-perplexity
-cp .env.example .env                  # แล้วใส่ PERPLEXITY_API_KEY
-docker network create agent_network   # ครั้งแรกครั้งเดียว — ชื่ออื่นตั้งได้ด้วย DOCKER_NETWORK
+cp .env.example .env                  # จากนั้นใส่ PERPLEXITY_API_KEY ในไฟล์ .env
+docker network create agent_network   # สร้างครั้งแรกครั้งเดียว หากต้องการใช้ชื่ออื่นให้กำหนดใน DOCKER_NETWORK
 docker compose up -d --build
 curl http://127.0.0.1:8803/health
 ```
 
-ค่าตั้งทั้งหมดและคำอธิบายอยู่ใน [`.env.example`](.env.example) — `.env` ใส่เฉพาะค่าที่ต้องตั้งและค่าที่ต้องการให้ต่างจากค่าเริ่มต้น
-แก้ `.env` แล้วสั่ง `docker compose up -d` (ไม่ต้อง build ใหม่)
+คำอธิบายการตั้งค่าทั้งหมดอยู่ในไฟล์ [`.env.example`](.env.example) โดยในไฟล์ `.env` ให้กำหนดเฉพาะค่าที่จำเป็น และค่าที่ต้องการเปลี่ยนจากค่าเริ่มต้น
+เมื่อแก้ไข `.env` แล้ว ให้สั่ง `docker compose up -d` อีกครั้ง โดยไม่ต้อง build ใหม่
 
-## เชื่อมกับ MCP client
+## การเชื่อมต่อกับ MCP client
 
-ตัวอย่างสำหรับ Hermes (`config.yaml`):
+ตัวอย่างการตั้งค่าใน Hermes (`config.yaml`):
 
 ```yaml
 mcp_servers:
   perplexity:
     url: http://mcp-perplexity:8080/mcp
-    timeout: 600        # perplexity_research ใช้เวลาหลายนาที อย่าตั้งต่ำกว่าเวลาที่มันใช้จริง
+    timeout: 600        # perplexity_research อาจใช้เวลาหลายนาที ควรตั้งให้นานกว่าเวลาที่การค้นใช้จริง
 ```
 
-ถ้า timeout ของ client สั้นกว่าเวลาที่ Perplexity ใช้ client จะรายงานว่าล้มเหลว ทั้งที่ Perplexity ยังทำงานและคิดค่าใช้จ่ายอยู่
-ถ้าเรียกจากเครื่องอื่นผ่านพอร์ต 8803 ต้องเพิ่ม `<ชื่อเครื่อง>:8803` หรือ `<IP>:8803` ใน `ALLOWED_HOSTS`
+หาก timeout ของ client สั้นกว่าเวลาที่ Perplexity ใช้ประมวลผล client จะแจ้งว่าการเรียกล้มเหลว ทั้งที่ Perplexity ยังทำงานและคิดค่าใช้จ่ายอยู่
+หากต้องการเรียกใช้จากเครื่องอื่นผ่านพอร์ต 8803 ให้เพิ่ม `<ชื่อเครื่อง>:8803` หรือ `<IP>:8803` ลงใน `ALLOWED_HOSTS`
 
 ## ความปลอดภัย
 
-- **ไม่มีระบบยืนยันตัวตน** — ใครที่เรียกพอร์ตนี้ได้ก็ใช้โควตา Perplexity ของคุณได้ ค่าเริ่มต้นเปิดให้เครื่องอื่นในเครือข่ายเรียกได้ (`PUBLISH_ADDR=0.0.0.0`)
-  ถ้าไม่จำเป็น ให้ตั้ง `PUBLISH_ADDR=127.0.0.1` — agent ใน docker network เดียวกันยังเรียกได้ตามปกติ
-- `ALLOWED_HOSTS` กันการโจมตีแบบ DNS rebinding จากเว็บเบราว์เซอร์ ใส่เฉพาะชื่อที่ใช้จริง
-- API key อยู่ใน `.env` เท่านั้น (ไม่ขึ้น git)
+- **ระบบนี้ไม่มีการยืนยันตัวตน** ผู้ที่เข้าถึงพอร์ตนี้ได้จะใช้โควตา Perplexity ของคุณได้ทันที ค่าเริ่มต้นเปิดให้เครื่องอื่นในเครือข่ายเข้าถึงได้ (`PUBLISH_ADDR=0.0.0.0`)
+  หากไม่จำเป็น ให้กำหนด `PUBLISH_ADDR=127.0.0.1` ซึ่ง agent ที่อยู่ใน docker network เดียวกันจะยังเรียกใช้ได้ตามปกติ
+- `ALLOWED_HOSTS` ช่วยป้องกันการโจมตีแบบ DNS rebinding ผ่านเว็บเบราว์เซอร์ จึงควรใส่เฉพาะชื่อที่ใช้งานจริง
+- API key ถูกเก็บไว้ในไฟล์ `.env` เท่านั้น และไฟล์นี้จะไม่ถูกส่งขึ้น git
 
-## ปรับรุ่นของ Perplexity MCP server
+## การอัปเดตเวอร์ชันของ Perplexity MCP server
 
-รุ่นที่ใช้ถูกล็อกไว้ใน `package.json` และ `package-lock.json` (ล็อกไลบรารีย่อยทุกตัว) ทุกคน build แล้วได้ของชุดเดียวกัน ถ้าจะอัปเดต:
+เวอร์ชันที่ใช้ถูกล็อกไว้ใน `package.json` และ `package-lock.json` ซึ่งล็อกไลบรารีย่อยไว้ครบทุกตัว ทุกเครื่องที่ build จึงได้ไลบรารีชุดเดียวกัน หากต้องการอัปเดต ให้สั่ง:
 
 ```bash
 docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 \
-  sh -c "npm install --package-lock-only --no-audit --no-fund @perplexity-ai/mcp-server@<รุ่นใหม่>"
+  sh -c "npm install --package-lock-only --no-audit --no-fund @perplexity-ai/mcp-server@<เวอร์ชันใหม่>"
 docker compose up -d --build
 ```
 
-บน PowerShell ใช้ `${PWD}` แทน `$PWD` และขึ้นบรรทัดใหม่ด้วย `` ` `` แทน `\` แล้ว commit `package.json` กับ `package-lock.json` ไปด้วย
+หากใช้ PowerShell ให้เปลี่ยน `$PWD` เป็น `${PWD}` และใช้ `` ` `` แทน `\` สำหรับขึ้นบรรทัดใหม่ จากนั้น commit ไฟล์ `package.json` และ `package-lock.json` ที่เปลี่ยนไป
 
 ## สัญญาอนุญาต
 
 [MIT](LICENSE) © 2026 Chacharin Lertyosbordin
-ตัว Perplexity MCP server เป็นลิขสิทธิ์ของ Perplexity AI ภายใต้ MIT ([source](https://github.com/perplexityai/modelcontextprotocol))
+Perplexity MCP server เป็นลิขสิทธิ์ของ Perplexity AI ภายใต้สัญญาอนุญาต MIT ([ซอร์สโค้ด](https://github.com/perplexityai/modelcontextprotocol))
