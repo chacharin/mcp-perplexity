@@ -1,12 +1,12 @@
-# mcp-perplexity-docker
+# mcp-perplexity
 
-ชุดติดตั้ง **Perplexity MCP server ฉบับทางการ** ([`@perplexity-ai/mcp-server`](https://www.npmjs.com/package/@perplexity-ai/mcp-server)) บน Docker ในโหมด **streamable HTTP**
-ช่วยให้ AI agent ที่รองรับ MCP เช่น Hermes ค้นหาข้อมูลบนเว็บและถามคำถามที่ต้องอ้างอิงข้อมูลล่าสุดผ่าน Perplexity ได้ โดยไม่ต้องติดตั้ง Node.js บนเครื่อง และ agent ไม่ต้องรู้ API key ของ Perplexity
+MCP server ที่ช่วยให้ AI agent ที่รองรับ MCP เช่น Hermes ค้นหาข้อมูลบนเว็บ ถามตอบ และค้นคว้าเชิงลึกผ่าน [Perplexity](https://www.perplexity.ai) ได้โดยตรง
+ทำงานบน Docker ในโหมด **streamable HTTP** โดย agent ไม่ต้องรู้ API key ของ Perplexity และไม่ต้องติดตั้ง Node.js บนเครื่อง
 
 ผู้พัฒนา: **Chacharin Lertyosbordin**
 
-> โปรเจกต์นี้จัดเตรียม Docker และการตั้งค่าให้พร้อมใช้งานเท่านั้น ส่วนตัว MCP server พัฒนาโดย Perplexity AI
-> ภายใต้สัญญาอนุญาต MIT และโปรเจกต์นี้ไม่ใช่ผลงานทางการของ Perplexity หรือได้รับการรับรองจาก Perplexity
+> โปรเจกต์นี้จัดเตรียม Docker และการตั้งค่าให้ [Perplexity MCP server ฉบับทางการ](https://www.npmjs.com/package/@perplexity-ai/mcp-server) เท่านั้น ไม่ได้พัฒนาตัว MCP server เอง
+> Perplexity MCP server พัฒนาโดย Perplexity AI ภายใต้สัญญาอนุญาต MIT และโปรเจกต์นี้ไม่ใช่ผลงานทางการของ Perplexity
 
 ## เครื่องมือที่มีให้
 
