@@ -1,0 +1,14 @@
+# credentials - .env.example is the template
+.env
+.env.*
+!.env.example
+
+node_modules/
+
+# old snapshots kept only on the host
+_archive/
+_to_delete/
+*.zip
+*.bak
+*.bak-*
+*.tar.gz

@@ -1,0 +1,23 @@
+# mcp-perplexity
+# - MCP endpoint http://mcp-perplexity:8080/mcp for agents on the same docker network
+#   (${DOCKER_NETWORK}, default agent_network - create it once: docker network create agent_network)
+# - publishes on ${PUBLISH_ADDR}:${PUBLISH_PORT} (default 0.0.0.0:8803 = reachable from other machines);
+#   every host:port used to reach it must be listed in ALLOWED_HOSTS (.env)
+# - stateless: no volumes, the container only calls out to the Perplexity API
+# Every ${…} below is set in .env; the defaults here are generic, not tied to any one deployment.
+services:
+  mcp-perplexity:
+    build: .
+    image: mcp-perplexity:dev
+    container_name: mcp-perplexity
+    env_file: .env
+    ports:
+      - "${PUBLISH_ADDR:-0.0.0.0}:${PUBLISH_PORT:-8803}:8080"
+    networks:
+      - agent_network
+    restart: unless-stopped
+
+networks:
+  agent_network:
+    external: true
+    name: ${DOCKER_NETWORK:-agent_network}

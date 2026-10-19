@@ -1,0 +1,11 @@
+{
+  "name": "mcp-perplexity-docker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Docker packaging of the official Perplexity MCP server (streamable HTTP) for AI agents",
+  "author": "Chacharin Lertyosbordin <lertyosbordin@outlook.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@perplexity-ai/mcp-server": "1.3.0"
+  }
+}

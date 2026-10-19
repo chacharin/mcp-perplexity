@@ -1,0 +1,11 @@
+# The image needs package.json and package-lock.json only (see Dockerfile).
+.env
+.env.*
+node_modules/
+.git/
+README.md
+LICENSE
+_archive/
+*.zip
+*.bak
+*.bak-*
