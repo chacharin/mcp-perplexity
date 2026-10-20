@@ -130,12 +130,13 @@ agent จะเรียก `perplexity_research` ซึ่งรับเฉพ
 
 ## รูปแบบ JSON ของคำขอและผลลัพธ์
 
-mcp-perplexity มี 2 route
+mcp-perplexity มี 3 route
 
 | Route | ใช้ทำอะไร |
 |---|---|
 | `POST /mcp` | เรียกเครื่องมือทั้งหมดตามมาตรฐาน MCP (JSON-RPC 2.0) agent ใช้ route นี้ |
 | `GET /health` | ตรวจว่า server ทำงานอยู่ ไม่ตรวจ API key และไม่เสียค่าใช้จ่าย |
+| `GET /usage` (พอร์ต 8081) | ข้อมูลการใช้งาน: token เวลา และค่าใช้จ่ายของการเรียก Perplexity ทุกครั้ง เปิดเฉพาะใน docker network (`http://mcp-perplexity:8081/usage`) |
 
 ### การส่งคำขอไปที่ `/mcp`
 
@@ -250,6 +251,38 @@ server นี้ตอบกลับเป็น JSON ธรรมดา (`Cont
 {"status": "ok", "service": "perplexity-mcp-server"}
 ```
 
+### ข้อมูลการใช้งาน (`GET /usage`)
+
+Perplexity ส่งจำนวน token และค่าใช้จ่ายกลับมาพร้อมทุกคำตอบ แต่ Perplexity MCP server ทางการไม่ได้เก็บไว้
+repo นี้จึงเพิ่ม `usage-hook.mjs` ซึ่งโหลดก่อน server ทางการ (`node --import`) อ่านสำเนาของคำตอบจาก Perplexity ทุกครั้ง โดยไม่แก้ไขสิ่งที่ส่งให้ agent
+แล้วบันทึกลงไฟล์ `usage-<วันที่>.jsonl` ใน docker volume `usage` เพื่อใช้วิจัยและปรับประสิทธิภาพ ระเบียนไม่มีคำถามหรือคำตอบ
+
+| ค่า | ความหมาย |
+|---|---|
+| `since`, `until` | ช่วงเวลา (epoch วินาที) หากไม่ระบุจะส่งทั้งหมด |
+| `limit` | จำนวนระเบียนสูงสุด (ล่าสุด) ค่าเริ่มต้น 50000 |
+
+ผลลัพธ์ของ `GET http://mcp-perplexity:8081/usage` (ย่อ) หลังเรียก `perplexity_ask` หนึ่งครั้ง:
+
+```json
+{
+  "schema": "harness-usage/1",
+  "environment": {"component": "mcp-perplexity", "version": "1.3.0", "host": "2efc…", "node": "v22.23.3", "cpu_count": 20, "mem_total_mb": 11816},
+  "records": [
+    {"kind": "llm_call", "tool": "perplexity_ask", "model": "openai/gpt-6-luna", "provider": "perplexity",
+     "duration_s": 2.342, "ttfb_s": 0.803, "input_tokens": 3, "cache_write_tokens": 5705, "cache_read_tokens": 0,
+     "output_tokens": 16, "reasoning_tokens": 0, "total_tokens": 5724, "cost_usd": 0.00172, "status": "ok",
+     "detail": {"endpoint": "v1/agent", "preset": "fast", "search_queries": 1, "search_results": 5,
+                "usage_raw": {"cost": {"tool_calls_cost": 0.001, "cache_creation_cost": 0.00071, "total_cost": 0.00172, "…": "…"}, "…": "…"}}}
+  ]
+}
+```
+
+- `perplexity_search` บันทึกเป็น `search_call` (Search API ไม่รายงาน token จึงมีเฉพาะเวลาและจำนวนผลการค้นหา) ส่วนเครื่องมืออื่นบันทึกเป็น `llm_call`
+- `detail.usage_raw` คือข้อมูลการใช้งานตามที่ Perplexity ส่งมาทั้งหมด เช่น ค่าใช้จ่ายของการค้นเว็บ (`tool_calls_cost`) ซึ่งมักสูงกว่าค่า token
+- ชื่อช่องข้อมูลเป็นแบบเดียวกับ plugin `usage-telemetry` ของ [harness-server](https://github.com/chacharin/harness-server) และ MCP ตัวอื่นของชุดนี้
+- hook นี้ทำงานเมื่อเรียก Perplexity โดยตรง หากกำหนด `PERPLEXITY_PROXY` server ทางการจะใช้ช่องทางอื่นที่ hook ไม่เห็น จึงจะไม่มีข้อมูลการใช้งาน
+
 ### ทดลองด้วย curl
 
 ```bash
@@ -270,6 +303,7 @@ curl http://127.0.0.1:8803/mcp \
 - **`PERPLEXITY_BASE_URL` และ `PERPLEXITY_PROXY`** ใช้เมื่อต้องเรียก Perplexity ผ่าน proxy ขององค์กร
 - **`PERPLEXITY_LOG_LEVEL`** ระดับของ log (`DEBUG` `INFO` `WARN` `ERROR`) ใช้ `DEBUG` เมื่อต้องการหาสาเหตุของปัญหา
 - **`ALLOWED_HOSTS` และ `ALLOWED_ORIGINS`** ชื่อ host ที่อนุญาตให้เรียก และโดเมนของ MCP client แบบเว็บที่อนุญาตให้เรียกข้ามโดเมน
+- **`USAGE_LOG`, `USAGE_DIR`, `USAGE_PORT` และ `USAGE_TOKEN`** การบันทึกข้อมูลการใช้งาน (ดู[ข้อมูลการใช้งาน](#ข้อมูลการใช้งาน-get-usage))
 
 ## ความปลอดภัย
 
@@ -278,14 +312,17 @@ curl http://127.0.0.1:8803/mcp \
 - `ALLOWED_HOSTS` ช่วยป้องกันการโจมตีแบบ DNS rebinding ผ่านเว็บเบราว์เซอร์ จึงควรใส่เฉพาะชื่อที่ใช้งานจริง แต่ไม่ได้ป้องกันผู้ที่เรียกตรงจากเครือข่าย
 - ควรตั้งวงเงินการใช้งานของ API key ไว้ที่ https://console.perplexity.ai เพื่อจำกัดความเสียหายหากมีผู้ใช้โควตาโดยไม่ได้รับอนุญาต
 - API key ถูกเก็บไว้ในไฟล์ `.env` เท่านั้น ไม่ถูกส่งให้ agent และไฟล์นี้จะไม่ถูกส่งขึ้น git
+- พอร์ตข้อมูลการใช้งาน (8081) ไม่ได้เปิดออกนอก docker network และไม่มีคำถามหรือคำตอบ หากต้องการให้ผู้เรียกต้องส่ง token ให้กำหนด `USAGE_TOKEN`
 
 ## สำหรับนักพัฒนา
 
-โปรเจกต์นี้ไม่มีโค้ดของตัวเอง มีเพียงไฟล์สำหรับติดตั้งและตั้งค่า
+โปรเจกต์นี้ใช้ Perplexity MCP server ทางการโดยไม่แก้ไข มีโค้ดของตัวเองเพียง `usage-hook.mjs`
 
 | ไฟล์ | หน้าที่ |
 |---|---|
-| `Dockerfile` | สร้าง image จาก `node` แล้วติดตั้ง Perplexity MCP server ตาม `package-lock.json` |
+| `Dockerfile` | สร้าง image จาก `node` แล้วติดตั้ง Perplexity MCP server ตาม `package-lock.json` และโหลด `usage-hook.mjs` ก่อน server |
+| `usage-hook.mjs` | บันทึก token เวลา และค่าใช้จ่ายของการเรียก Perplexity ทุกครั้ง และให้บริการ `GET /usage` |
+| `tests/` | ทดสอบ `usage-hook.mjs` กับ Perplexity จำลอง (ไม่เสียค่าใช้จ่าย): `docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 npm test` |
 | `docker-compose.yml` | กำหนดพอร์ต docker network และอ่านการตั้งค่าจาก `.env` |
 | `package.json`, `package-lock.json` | ล็อกเวอร์ชันของ Perplexity MCP server และไลบรารีย่อยทุกตัว ทุกเครื่องที่ build จึงได้ไลบรารีชุดเดียวกัน |
 

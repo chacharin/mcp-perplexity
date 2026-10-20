@@ -3,7 +3,8 @@
 #   (${DOCKER_NETWORK}, default agent_network - create it once: docker network create agent_network)
 # - publishes on ${PUBLISH_ADDR}:${PUBLISH_PORT} (default 0.0.0.0:8803 = reachable from other machines);
 #   every host:port used to reach it must be listed in ALLOWED_HOSTS (.env)
-# - stateless: no volumes, the container only calls out to the Perplexity API
+# - usage log (tokens, cost and timings of every Perplexity call) in the "usage" volume, served at
+#   http://mcp-perplexity:8081/usage on the docker network (not published to other machines)
 # Every ${…} below is set in .env; the defaults here are generic, not tied to any one deployment.
 services:
   mcp-perplexity:
@@ -13,9 +14,14 @@ services:
     env_file: .env
     ports:
       - "${PUBLISH_ADDR:-0.0.0.0}:${PUBLISH_PORT:-8803}:8080"
+    volumes:
+      - "usage:/app/usage"
     networks:
       - agent_network
     restart: unless-stopped
+
+volumes:
+  usage:
 
 networks:
   agent_network:
