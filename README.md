@@ -280,7 +280,7 @@ repo นี้จึงเพิ่ม `usage-hook.mjs` ซึ่งโหลด
 
 - `perplexity_search` บันทึกเป็น `search_call` (Search API ไม่รายงาน token จึงมีเฉพาะเวลาและจำนวนผลการค้นหา) ส่วนเครื่องมืออื่นบันทึกเป็น `llm_call`
 - `detail.usage_raw` คือข้อมูลการใช้งานตามที่ Perplexity ส่งมาทั้งหมด เช่น ค่าใช้จ่ายของการค้นเว็บ (`tool_calls_cost`) ซึ่งมักสูงกว่าค่า token
-- ชื่อช่องข้อมูลเป็นแบบเดียวกับ plugin `usage-telemetry` ของ [harness-server](https://github.com/chacharin/harness-server) และ MCP ตัวอื่นของชุดนี้
+- ชื่อช่องข้อมูลเป็นแบบเดียวกับ plugin `usage-telemetry` ของ [osint-harness-profile](https://github.com/chacharin/osint-harness-profile) และ MCP ตัวอื่นของชุดนี้
 - hook นี้ทำงานเมื่อเรียก Perplexity โดยตรง หากกำหนด `PERPLEXITY_PROXY` server ทางการจะใช้ช่องทางอื่นที่ hook ไม่เห็น จึงจะไม่มีข้อมูลการใช้งาน
 
 ### ทดลองด้วย curl
