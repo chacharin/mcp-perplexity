@@ -7,10 +7,12 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# usage-hook.mjs logs the token usage of every Perplexity call (the server itself drops it) to /app/usage,
-# served on port 8081 (GET /usage); it is loaded before the server with --import
-COPY usage-hook.mjs ./
+# loaded before the server with --import:
+#   tools-hook.mjs  switches each tool on or off from .env (ENABLE_PERPLEXITY_SEARCH / _ASK / _REASON / _RESEARCH)
+#   usage-hook.mjs  logs the token usage of every Perplexity call (the server itself drops it) to /app/usage,
+#                   served on port 8081 (GET /usage, GET /health)
+COPY tools-hook.mjs usage-hook.mjs ./
 RUN addgroup -g 10001 appuser && adduser -D -u 10001 -G appuser appuser && mkdir -p /app/usage && chown appuser /app/usage
 USER appuser
 EXPOSE 8080 8081
-CMD ["node", "--import", "./usage-hook.mjs", "node_modules/@perplexity-ai/mcp-server/dist/http.js"]
+CMD ["node", "--import", "./tools-hook.mjs", "--import", "./usage-hook.mjs", "node_modules/@perplexity-ai/mcp-server/dist/http.js"]

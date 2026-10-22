@@ -18,6 +18,7 @@ MCP server ที่ช่วยให้ AI agent ที่รองรับ M
 | `perplexity_research` | ค้นคว้าเชิงลึกจากหลายแหล่งข้อมูล แล้วเขียนเป็นรายงานพร้อมแหล่งอ้างอิง | Agent API (preset `high`) | ช้า อาจใช้เวลาหลายนาที และราคาสูงที่สุด |
 
 ทุกเครื่องมือเป็นแบบอ่านอย่างเดียว และการเรียกใช้ทุกครั้งจะคิดค่าใช้จ่ายกับ `PERPLEXITY_API_KEY` ของคุณ
+เปิดหรือปิดเครื่องมือแต่ละตัวได้ใน `.env` (ดู[เปิด/ปิดเครื่องมือทีละตัว](#เปิดปิดเครื่องมือทีละตัว))
 
 ## หลักการทำงาน
 
@@ -301,9 +302,26 @@ curl http://127.0.0.1:8803/mcp \
 
 - **`PERPLEXITY_TIMEOUT_MS`** เวลารอคำตอบจาก Perplexity สูงสุด (มิลลิวินาที) ค่าเริ่มต้น 5 นาที ควรเพิ่มหากใช้ `perplexity_research` กับหัวข้อที่กว้างมาก
 - **`PERPLEXITY_BASE_URL` และ `PERPLEXITY_PROXY`** ใช้เมื่อต้องเรียก Perplexity ผ่าน proxy ขององค์กร
+- **`ENABLE_PERPLEXITY_SEARCH`, `_ASK`, `_REASON`, `_RESEARCH`** เปิดหรือปิดเครื่องมือแต่ละตัว (ดู[เปิด/ปิดเครื่องมือทีละตัว](#เปิดปิดเครื่องมือทีละตัว))
 - **`PERPLEXITY_LOG_LEVEL`** ระดับของ log (`DEBUG` `INFO` `WARN` `ERROR`) ใช้ `DEBUG` เมื่อต้องการหาสาเหตุของปัญหา
 - **`ALLOWED_HOSTS` และ `ALLOWED_ORIGINS`** ชื่อ host ที่อนุญาตให้เรียก และโดเมนของ MCP client แบบเว็บที่อนุญาตให้เรียกข้ามโดเมน
 - **`USAGE_LOG`, `USAGE_DIR`, `USAGE_PORT` และ `USAGE_TOKEN`** การบันทึกข้อมูลการใช้งาน (ดู[ข้อมูลการใช้งาน](#ข้อมูลการใช้งาน-get-usage))
+
+### เปิด/ปิดเครื่องมือทีละตัว
+
+แต่ละเครื่องมือมีตัวแปรของตัวเองใน `.env` ค่าเริ่มต้นคือ `true` (เปิด) รับค่า `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`
+
+```bash
+ENABLE_PERPLEXITY_SEARCH=true
+ENABLE_PERPLEXITY_ASK=false
+ENABLE_PERPLEXITY_REASON=false
+ENABLE_PERPLEXITY_RESEARCH=false     # ตัวอย่าง: เปิดเฉพาะ perplexity_search
+```
+
+- เครื่องมือที่ปิดจะ**ไม่อยู่ในรายการเครื่องมือ** (`tools/list`) agent จึงไม่เห็นและไม่เสีย token ค่าคำอธิบายเครื่องมือ และถ้าเรียกตรง ๆ จะถูกปฏิเสธ ผลนี้เหมือนกันทุก client
+- แก้แล้วสั่ง `docker compose up -d` แล้วรีสตาร์ต agent หรือโหลด MCP ใหม่ (ใน Hermes ใช้ `/reload-mcp` หรือรีสตาร์ต gateway) เพราะ client อ่านรายการเครื่องมือตอนเชื่อมต่อเท่านั้น
+- ค่าที่อ่านไม่ได้ เช่น `ENABLE_PERPLEXITY_ASK=maybe` ระบบจะคงเครื่องมือนั้นเปิดไว้ และแจ้งใน log กับ `GET http://mcp-perplexity:8081/health`
+- ตรวจสถานะได้ที่ `GET http://mcp-perplexity:8081/health` ซึ่งตอบ `{"ok": true, "tools": {"perplexity_search": true, "perplexity_ask": false, …}, "problems": [], …}`
 
 ## ความปลอดภัย
 
@@ -316,13 +334,14 @@ curl http://127.0.0.1:8803/mcp \
 
 ## สำหรับนักพัฒนา
 
-โปรเจกต์นี้ใช้ Perplexity MCP server ทางการโดยไม่แก้ไข มีโค้ดของตัวเองเพียง `usage-hook.mjs`
+โปรเจกต์นี้ใช้ Perplexity MCP server ทางการโดยไม่แก้ไข มีโค้ดของตัวเองเพียง `tools-hook.mjs` และ `usage-hook.mjs` ซึ่งโหลดก่อน server ด้วย `node --import`
 
 | ไฟล์ | หน้าที่ |
 |---|---|
 | `Dockerfile` | สร้าง image จาก `node` แล้วติดตั้ง Perplexity MCP server ตาม `package-lock.json` และโหลด `usage-hook.mjs` ก่อน server |
-| `usage-hook.mjs` | บันทึก token เวลา และค่าใช้จ่ายของการเรียก Perplexity ทุกครั้ง และให้บริการ `GET /usage` |
-| `tests/` | ทดสอบ `usage-hook.mjs` กับ Perplexity จำลอง (ไม่เสียค่าใช้จ่าย): `docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 npm test` |
+| `tools-hook.mjs` | เปิด/ปิดเครื่องมือแต่ละตัวตาม `ENABLE_PERPLEXITY_*` (ปิดเครื่องมือทันทีหลัง server ลงทะเบียน ผ่าน `McpServer.registerTool` ของ MCP SDK) |
+| `usage-hook.mjs` | บันทึก token เวลา และค่าใช้จ่ายของการเรียก Perplexity ทุกครั้ง และให้บริการ `GET /usage` และ `GET /health` (พอร์ต 8081) |
+| `tests/` | ทดสอบ `tools-hook.mjs` กับ server ทางการ และ `usage-hook.mjs` กับ Perplexity จำลอง (ไม่เสียค่าใช้จ่าย): `docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 sh -c "npm ci && npm test"` |
 | `docker-compose.yml` | กำหนดพอร์ต docker network และอ่านการตั้งค่าจาก `.env` |
 | `package.json`, `package-lock.json` | ล็อกเวอร์ชันของ Perplexity MCP server และไลบรารีย่อยทุกตัว ทุกเครื่องที่ build จึงได้ไลบรารีชุดเดียวกัน |
 

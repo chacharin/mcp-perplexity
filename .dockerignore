@@ -1,4 +1,4 @@
-# The image needs package.json, package-lock.json and usage-hook.mjs only (see Dockerfile).
+# The image needs package.json, package-lock.json, tools-hook.mjs and usage-hook.mjs only (see Dockerfile).
 .env
 .env.*
 node_modules/

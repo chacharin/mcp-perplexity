@@ -220,13 +220,19 @@ function authorized(req) {
   return got.length === want.length && timingSafeEqual(got, want);
 }
 
+// the tool switches (tools-hook.mjs), shown in /health; absent when the MCP SDK is not installed (unit tests)
+const toolsHook = await import("./tools-hook.mjs").catch(() => null);
+
 export const usageServer = PORT > 0 ? http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   const send = (code, body) => {
     res.writeHead(code, { "Content-Type": "application/json" });
     res.end(JSON.stringify(body));
   };
-  if (u.pathname === "/health") return send(200, { ok: true, usage_log: { enabled: ENABLED, dir: DIR, last_error: lastError } });
+  if (u.pathname === "/health") {
+    return send(200, { ok: !(toolsHook?.switches.problems.length), usage_log: { enabled: ENABLED, dir: DIR, last_error: lastError },
+      tools: toolsHook ? toolsHook.switches.enabled : null, problems: toolsHook ? toolsHook.switches.problems : [] });
+  }
   if (u.pathname !== "/usage") return send(404, { error: "not found" });
   if (!authorized(req)) return send(401, { error: "unauthorized" });
   const f = (k) => (u.searchParams.get(k) ? Number(u.searchParams.get(k)) : null);
