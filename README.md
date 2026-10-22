@@ -46,9 +46,9 @@ tokens, time and cost, so you always know what your agent spent. You do not need
 | Tool | What it does | Perplexity API | Speed and cost | On in `.env.example` |
 |---|---|---|---|---|
 | `perplexity_search` | Searches the web and returns the results as they are: title, URL, an excerpt of the page and the date. No AI summary | Search API | Fast, cheapest | yes |
-| `perplexity_ask` | Answers a question from the web, with citations | Agent API, preset `fast` | Fast | no |
-| `perplexity_reason` | Works through a question step by step (compare, calculate, explain why), grounded in the web | Agent API, preset `medium` | Medium | no |
-| `perplexity_research` | Researches a topic across many sources and writes a report with citations | Agent API, preset `high` | Slow (can take minutes), most expensive | no |
+| `perplexity_ask` | Answers a question from the web, with citations | Agent API, preset `fast` | Fast | yes |
+| `perplexity_reason` | Works through a question step by step (compare, calculate, explain why), grounded in the web | Agent API, preset `medium` | Medium | yes |
+| `perplexity_research` | Researches a topic across many sources and writes a report with citations | Agent API, preset `high` | Slow (can take minutes), most expensive | yes |
 
 All tools are read-only. Every call is billed to your `PERPLEXITY_API_KEY`. See current prices on the
 [Perplexity pricing page](https://docs.perplexity.ai/getting-started/pricing).
