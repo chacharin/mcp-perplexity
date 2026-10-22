@@ -1,205 +1,295 @@
 # mcp-perplexity
 
-MCP server ที่ช่วยให้ AI agent ที่รองรับ MCP เช่น Hermes ค้นหาข้อมูลบนเว็บ ถามตอบ และค้นคว้าเชิงลึกผ่าน [Perplexity](https://www.perplexity.ai) ได้โดยตรง
-ทำงานบน Docker ในโหมด **streamable HTTP** โดย agent ไม่ต้องรู้ API key ของ Perplexity และไม่ต้องติดตั้ง Node.js บนเครื่อง
+**English** | [ภาษาไทย](README.th.md)
 
-ผู้พัฒนา: **Chacharin Lertyosbordin**
+A ready-to-run Docker setup of the [official Perplexity MCP server](https://www.npmjs.com/package/@perplexity-ai/mcp-server)
+that gives AI agents and assistants **web search**, **question answering with citations**, **step-by-step reasoning** and
+**deep research**, powered by [Perplexity](https://www.perplexity.ai).
 
-> โปรเจกต์นี้จัดเตรียม Docker และการตั้งค่าให้ [Perplexity MCP server ฉบับทางการ](https://www.npmjs.com/package/@perplexity-ai/mcp-server) เท่านั้น ไม่ได้พัฒนาตัว MCP server เอง
-> Perplexity MCP server พัฒนาโดย Perplexity AI ภายใต้สัญญาอนุญาต MIT และโปรเจกต์นี้ไม่ใช่ผลงานทางการของ Perplexity
+Any [MCP](https://modelcontextprotocol.io) client that supports streamable HTTP can use it, for example Claude Code,
+Claude Desktop, VS Code, Cursor or your own agent. The Perplexity API key stays in the container, and every call is logged with its
+tokens, time and cost, so you always know what your agent spent. You do not need Node.js on your machine.
 
-## เครื่องมือที่มีให้
+> This project packages the official Perplexity MCP server; it does not reimplement it. The server is developed by Perplexity AI
+> under the MIT license. This project is not an official Perplexity product.
 
-| เครื่องมือ | หน้าที่ | API ของ Perplexity ที่ใช้ | ความเร็วและค่าใช้จ่าย |
-|---|---|---|---|
-| `perplexity_search` | ค้นหาเว็บ แล้วส่งรายการผลการค้นหากลับมาตามต้นฉบับ ได้แก่ ชื่อหน้าเว็บ URL ข้อความโดยย่อ และวันที่ โดยไม่ให้ AI สรุป | Search API | เร็ว ราคาถูกที่สุด |
-| `perplexity_ask` | ตอบคำถามทั่วไปโดยค้นข้อมูลจากเว็บ พร้อมแหล่งอ้างอิง | Agent API (preset `fast`) | เร็ว |
-| `perplexity_reason` | วิเคราะห์ประเด็นอย่างเป็นขั้นตอน เช่น เปรียบเทียบ คำนวณ หรือให้เหตุผล โดยอ้างอิงข้อมูลจากเว็บ | Agent API (preset `medium`) | ปานกลาง |
-| `perplexity_research` | ค้นคว้าเชิงลึกจากหลายแหล่งข้อมูล แล้วเขียนเป็นรายงานพร้อมแหล่งอ้างอิง | Agent API (preset `high`) | ช้า อาจใช้เวลาหลายนาที และราคาสูงที่สุด |
+- [What you get](#what-you-get)
+- [Tools](#tools)
+- [How it works](#how-it-works)
+- [Quick start (Docker)](#quick-start-docker)
+- [Running without Docker](#running-without-docker)
+- [Connecting an MCP client](#connecting-an-mcp-client)
+- [Calling it directly (JSON)](#calling-it-directly-json)
+- [Turning tools on and off](#turning-tools-on-and-off)
+- [Usage and cost data](#usage-and-cost-data)
+- [Configuration reference](#configuration-reference)
+- [Security](#security)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
 
-ทุกเครื่องมือเป็นแบบอ่านอย่างเดียว และการเรียกใช้ทุกครั้งจะคิดค่าใช้จ่ายกับ `PERPLEXITY_API_KEY` ของคุณ
-เปิดหรือปิดเครื่องมือแต่ละตัวได้ใน `.env` **ไฟล์ตั้งต้น ([`.env.example`](.env.example)) เปิดเฉพาะ `perplexity_search`** ซึ่งเร็วและถูกที่สุด
-เครื่องมืออีก 3 ตัวต้องเปลี่ยนเป็น `true` ก่อนใช้ (ดู[เปิด/ปิดเครื่องมือทีละตัว](#เปิดปิดเครื่องมือทีละตัว))
+## What you get
 
-## หลักการทำงาน
+- **Four tools, from cheap to thorough.** Raw search results, quick answers, reasoned answers and full research reports. Pick
+  the depth you need per task.
+- **Answers with citations.** The answering tools return text with reference numbers such as `[2][3]` and a list of source
+  URLs.
+- **Only the tools you want.** Each tool has its own switch in `.env`. The example file turns on only `perplexity_search`, the
+  fastest and cheapest. A tool that is off disappears from the client's tool list.
+- **Token, time and cost log.** Perplexity reports tokens and cost with every answer, but the official server drops them. This
+  project records them, one JSON line per call, at `GET /usage`. Numbers only, never the question or the answer.
+- **The official server, unchanged.** Two small hook files are loaded before it with `node --import`. Updating to a new
+  Perplexity release means changing one version number.
+- **Locked dependencies.** `package-lock.json` pins the server and every library, so every build is the same.
+
+## Tools
+
+| Tool | What it does | Perplexity API | Speed and cost | On in `.env.example` |
+|---|---|---|---|---|
+| `perplexity_search` | Searches the web and returns the results as they are: title, URL, an excerpt of the page and the date. No AI summary | Search API | Fast, cheapest | yes |
+| `perplexity_ask` | Answers a question from the web, with citations | Agent API, preset `fast` | Fast | no |
+| `perplexity_reason` | Works through a question step by step (compare, calculate, explain why), grounded in the web | Agent API, preset `medium` | Medium | no |
+| `perplexity_research` | Researches a topic across many sources and writes a report with citations | Agent API, preset `high` | Slow (can take minutes), most expensive | no |
+
+All tools are read-only. Every call is billed to your `PERPLEXITY_API_KEY`. See current prices on the
+[Perplexity pricing page](https://docs.perplexity.ai/getting-started/pricing).
+
+You do not call the tools yourself: you ask your agent in plain language and it picks the tool and fills in the parameters. To
+steer it, say what you want, e.g. *"quick web search"* or *"do deep research on…"*, because cost and time differ a lot between
+tools.
+
+### `perplexity_search`
+
+Example requests to an agent: *"Find the GitHub link of LightRAG"*, *"News about EU AI policy this week, only from europa.eu"*.
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `query` | ✓ | The search terms |
+| `max_results` | | Number of results, 1–20 (default 10) |
+| `max_tokens_per_page` | | Most tokens taken from each page (default 1024) |
+| `country` | | Two-letter ISO 3166-1 country code, e.g. `US` or `TH`, for results from that country |
+| `search_recency_filter` | | `hour`, `day`, `week`, `month` or `year` |
+| `search_domain_filter` | | Only these domains, e.g. `["wikipedia.org"]`, or leave domains out with `-`, e.g. `["-reddit.com"]` |
+| `search_type` | | `web` (default) or `fast` (faster and cheaper) |
+
+Best when you want original sources, or when your agent should read and summarize by itself.
+
+### `perplexity_ask` and `perplexity_reason`
+
+Example requests: *"What is LightRAG? Keep it short."*, *"Compare the energy use of the three largest data-center regions."*
+
+| Parameter | Required | Meaning |
+|---|---|---|
+| `messages` | ✓ | The conversation: a list of `{role, content}` with role `system`, `user` or `assistant` |
+| `search_recency_filter` | | `hour`, `day`, `week`, `month` or `year` |
+| `search_domain_filter` | | Same as in `perplexity_search` |
+| `search_context_size` | | How much web content is used: `low` (fastest), `medium`, `high` (most complete) |
+
+The answer is text with reference numbers such as `[2][3]` and the list of source URLs at the end.
+
+### `perplexity_research`
+
+Example request: *"Do deep research on how governments use retrieval-augmented generation and write a report."*
+
+Takes only `messages`. It can run for several minutes and costs the most, so use it when you really need a report from many
+sources, and give your client a long enough timeout (see [Connecting an MCP client](#connecting-an-mcp-client)).
+
+## How it works
 
 ```
-agent ──POST /mcp──▶ mcp-perplexity (container)
-                       ① ตรวจ Host header กับรายชื่อใน ALLOWED_HOSTS (หากไม่ตรงจะตอบ HTTP 421)
-                       ② ส่งคำขอไปยังเครื่องมือที่เรียก
-                       ③ เครื่องมือเรียก https://api.perplexity.ai ด้วย PERPLEXITY_API_KEY
-                     ◀── ส่งผลลัพธ์กลับไปยัง agent
+MCP client / agent ──POST /mcp──▶ mcp-perplexity (container, port 8080)
+                                    ① checks the Host header against ALLOWED_HOSTS (HTTP 421 if not listed)
+                                    ② tools-hook.mjs has removed the tools that are switched off
+                                    ③ the tool calls https://api.perplexity.ai with PERPLEXITY_API_KEY
+                                    ④ usage-hook.mjs reads a copy of the answer and logs tokens, time and cost
+                  ◀── the answer goes back to the client unchanged
+
+usage/*.jsonl ──GET /usage (port 8081, docker network only)──▶ your spreadsheet, dashboard or research
 ```
 
-ระบบนี้ไม่เก็บสถานะการทำงาน ไม่มีฐานข้อมูล และไม่ต้อง mount โฟลเดอร์ใด ๆ
+The server keeps no state and has no database. The only volume holds the usage log.
 
-## เริ่มต้นใช้งาน
+## Quick start (Docker)
 
-### สิ่งที่ต้องเตรียม
+You need [Docker](https://docs.docker.com/get-docker/) with Docker Compose, an internet connection for the first build (to
+download the Node image and npm packages), and a Perplexity API key from [console.perplexity.ai](https://console.perplexity.ai).
 
-- **Docker** (Docker Desktop หรือ Docker Engine) โดยไม่ต้องติดตั้ง Node.js
-- **การเชื่อมต่ออินเทอร์เน็ตระหว่าง build ครั้งแรก** เพื่อดาวน์โหลด image ของ Node และแพ็กเกจจาก npm
-- **Perplexity API key** ขอได้ที่ https://console.perplexity.ai ซึ่ง**จำเป็นต้องมี** หากไม่กำหนด ระบบจะไม่เริ่มทำงาน
-
-### ขั้นตอนการติดตั้ง
+**1. Get the code**
 
 ```bash
 git clone https://github.com/chacharin/mcp-perplexity.git
+```
+
+```bash
 cd mcp-perplexity
-cp .env.example .env                  # จากนั้นใส่ PERPLEXITY_API_KEY ในไฟล์ .env
-docker network create agent_network   # สร้างครั้งแรกครั้งเดียว หากต้องการใช้ชื่ออื่นให้กำหนดใน DOCKER_NETWORK
+```
+
+**2. Create the docker network** (once per machine). Containers on this network, such as an agent running in Docker, reach the
+server by name. Skip this step if the network already exists.
+
+```bash
+docker network create agent_network
+```
+
+**3. Create `.env` and put your key in it**
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and replace the example value of `PERPLEXITY_API_KEY` with your key. Only `perplexity_search` is on; to use the other
+tools, set their `ENABLE_PERPLEXITY_…` lines to `true` (see [Turning tools on and off](#turning-tools-on-and-off)).
+
+**4. Start the server**
+
+```bash
 docker compose up -d --build
+```
+
+**5. Check it**
+
+```bash
 curl http://127.0.0.1:8803/health
 ```
 
-หาก `/health` ตอบ `{"status":"ok", …}` แปลว่า server ทำงานแล้ว แต่ยังไม่ได้ตรวจว่า API key ถูกต้อง
-key จะถูกตรวจเมื่อเรียกเครื่องมือครั้งแรก หาก key ผิด ผลลัพธ์จะแจ้ง `401 Unauthorized` (ดูหัวข้อ[ข้อผิดพลาด](#ข้อผิดพลาด))
+`{"status":"ok", …}` means the server is running. It does not check the key: a wrong key shows up as `401 Unauthorized` on the
+first tool call.
 
-`.env` ที่คัดลอกมาจะเปิดเฉพาะ `perplexity_search` หากต้องการถามตอบหรือค้นคว้าเชิงลึก ให้เปลี่ยน `ENABLE_PERPLEXITY_ASK`, `ENABLE_PERPLEXITY_REASON` หรือ `ENABLE_PERPLEXITY_RESEARCH` เป็น `true`
+The MCP endpoint is now `http://localhost:8803/mcp` on this machine, and `http://mcp-perplexity:8080/mcp` from other containers
+on `agent_network`.
 
-คำอธิบายการตั้งค่าทั้งหมดอยู่ในไฟล์ [`.env.example`](.env.example) โดยในไฟล์ `.env` ให้กำหนดเฉพาะค่าที่จำเป็น และค่าที่ต้องการเปลี่ยนจากค่าเริ่มต้น
-เมื่อแก้ไข `.env` แล้ว ให้สั่ง `docker compose up -d` อีกครั้ง โดยไม่ต้อง build ใหม่
+After editing `.env`, run `docker compose up -d` again (no rebuild needed). To stop the server, run `docker compose down`. The usage
+log is kept in the `usage` volume.
 
-### การเชื่อมต่อกับ MCP client
+## Running without Docker
 
-ตัวอย่างการตั้งค่าใน Hermes (`config.yaml`):
+You need Node.js 22 or newer.
+
+```bash
+npm ci --omit=dev
+```
+
+Add these lines to `.env` so the server listens on port 8803 of this machine only and keeps its log in the project folder:
+
+```
+BIND_ADDRESS=127.0.0.1
+PORT=8803
+ALLOWED_HOSTS=localhost:8803,127.0.0.1:8803
+USAGE_DIR=./usage
+```
+
+```bash
+node --env-file=.env --import ./tools-hook.mjs --import ./usage-hook.mjs node_modules/@perplexity-ai/mcp-server/dist/http.js
+```
+
+The usage endpoints are then at `http://127.0.0.1:8081/health` and `http://127.0.0.1:8081/usage`.
+
+## Connecting an MCP client
+
+The server speaks **streamable HTTP**. Use the URL that your client can reach:
+
+| Where the client runs | URL | Must be in `ALLOWED_HOSTS` |
+|---|---|---|
+| The same machine | `http://localhost:8803/mcp` | `localhost:8803` (already in the example) |
+| Another container on `agent_network` | `http://mcp-perplexity:8080/mcp` | `mcp-perplexity:8080` (already in the example) |
+| Another machine on your network | `http://<server-ip>:8803/mcp` | `<server-ip>:8803` (add it; see [Security](#security)) |
+
+**Set a long timeout.** `perplexity_research` can take several minutes. If the client gives up first, it reports a failure while
+Perplexity keeps working and still bills the call. 600 seconds is a safe value.
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http perplexity http://localhost:8803/mcp
+```
+
+**Claude Desktop** (`claude_desktop_config.json`, through the [mcp-remote](https://www.npmjs.com/package/mcp-remote) bridge;
+needs Node.js)
+
+```json
+{
+  "mcpServers": {
+    "perplexity": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:8803/mcp"]
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/mcp.json`)
+
+```json
+{
+  "servers": {
+    "perplexity": { "type": "http", "url": "http://localhost:8803/mcp" }
+  }
+}
+```
+
+**Cursor** (`~/.cursor/mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "perplexity": { "url": "http://localhost:8803/mcp" }
+  }
+}
+```
+
+**Hermes Agent** (`config.yaml`)
 
 ```yaml
 mcp_servers:
   perplexity:
     url: http://mcp-perplexity:8080/mcp
-    timeout: 600        # perplexity_research อาจใช้เวลาหลายนาที ควรนานกว่าเวลาที่การค้นใช้จริง
+    timeout: 600
 ```
 
-หาก timeout ของ client สั้นกว่าเวลาที่ Perplexity ใช้ประมวลผล client จะแจ้งว่าการเรียกล้มเหลว ทั้งที่ Perplexity ยังทำงานและคิดค่าใช้จ่ายอยู่
+**Other clients:** use the URL above with the streamable HTTP transport. A client that runs inside a web page (or MCP Inspector
+in *Direct* mode) also needs its page address in `ALLOWED_ORIGINS`.
 
-ชื่อ host และพอร์ตที่ client ใช้เรียก ต้องอยู่ในรายชื่อ `ALLOWED_HOSTS` ทุกตัวอักษร ค่าตัวอย่างรองรับ `mcp-perplexity:8080` (agent บน docker network) และ `localhost:8803`, `127.0.0.1:8803` (เครื่องนี้) แล้ว
-หากต้องการเรียกจากเครื่องอื่นผ่าน `http://<IP ของเครื่อง>:8803/mcp` ให้เพิ่ม `<ชื่อเครื่อง>:8803` หรือ `<IP>:8803` ลงใน `ALLOWED_HOSTS`
+**Try it without an agent** using [MCP Inspector](https://github.com/modelcontextprotocol/inspector) (needs Node.js):
 
-## วิธีใช้งาน
+```bash
+npx @modelcontextprotocol/inspector
+```
 
-เมื่อเชื่อมต่อแล้ว ผู้ใช้เพียงพิมพ์สั่ง agent ด้วยภาษาปกติ agent จะเลือกเครื่องมือและกรอกค่าให้เอง
-หัวข้อนี้อธิบายว่าแต่ละงานควรสั่งอย่างไร และเครื่องมือรับค่าอะไรบ้าง
+In the page that opens, choose Transport = *Streamable HTTP*, URL = `http://localhost:8803/mcp`, Connection type = *Via Proxy*,
+press *Connect*, then open *Tools* and run `perplexity_search`.
 
-หากต้องการให้ agent ใช้เครื่องมือใดโดยเฉพาะ ให้ระบุในคำสั่ง เช่น "ค้นแบบเร็ว" หรือ "ค้นคว้าเชิงลึก" เพราะแต่ละเครื่องมือมีค่าใช้จ่ายและเวลาต่างกันมาก
+**A tip for your agent's instructions.** Tell it when to use which tool, for example: *"Use perplexity_search for facts and
+sources. Use perplexity_research only when I ask for a report. Cite every URL you use."*
 
-### 1. ค้นหาเว็บ (ได้รายการผลการค้นหา)
+## Calling it directly (JSON)
 
-ตัวอย่างคำสั่ง:
+The server has these routes:
 
-> ค้นเว็บหาลิงก์ GitHub ของ LightRAG
-> หาข่าวเกี่ยวกับนโยบาย AI ของไทยในสัปดาห์นี้ ขอเฉพาะจากเว็บ .go.th
-
-agent จะเรียก `perplexity_search`
-
-| ค่า | จำเป็น | ความหมาย |
+| Route | Port | Purpose |
 |---|---|---|
-| `query` | ✓ | คำค้นหา |
-| `max_results` | | จำนวนผลการค้นหา 1–20 (ค่าเริ่มต้น 10) |
-| `max_tokens_per_page` | | จำนวน token สูงสุดที่ดึงจากแต่ละหน้าเว็บ (ค่าเริ่มต้น 1024) |
-| `country` | | รหัสประเทศ 2 ตัวอักษรตาม ISO 3166-1 เช่น `TH` เพื่อให้ได้ผลของประเทศนั้น |
-| `search_recency_filter` | | ช่วงเวลาของผลการค้นหา: `hour` `day` `week` `month` `year` |
-| `search_domain_filter` | | จำกัดโดเมน เช่น `["wikipedia.org"]` หรือตัดโดเมนออกด้วย `-` เช่น `["-reddit.com"]` |
-| `search_type` | | `web` (ค่าเริ่มต้น) หรือ `fast` ซึ่งเร็วและถูกกว่า |
+| `POST /mcp` | 8080 (published as 8803) | All tools, in the MCP standard (JSON-RPC 2.0) |
+| `GET /health` | 8080 (published as 8803) | Is the server running? Does not check the key and costs nothing |
+| `GET /health` | 8081 (docker network only) | Which tools are on, settings that could not be read, state of the usage log |
+| `GET /usage` | 8081 (docker network only) | Tokens, time and cost of every Perplexity call |
 
-ผลลัพธ์เป็นรายการหน้าเว็บ แต่ละรายการมีชื่อหน้า URL ข้อความที่ดึงมาจากหน้านั้น และวันที่ โดยไม่มีการสรุปด้วย AI
-เหมาะกับงานที่ต้องการแหล่งข้อมูลต้นฉบับ หรือให้ agent อ่านและสรุปเอง
-
-### 2. ถามคำถาม (ได้คำตอบพร้อมแหล่งอ้างอิง)
-
-ต้องตั้ง `ENABLE_PERPLEXITY_ASK=true` (สำหรับ `perplexity_ask`) หรือ `ENABLE_PERPLEXITY_REASON=true` (สำหรับ `perplexity_reason`) ก่อน
-
-ตัวอย่างคำสั่ง:
-
-> LightRAG คืออะไร ตอบสั้น ๆ
-> ถาม Perplexity ว่าราคาน้ำมันดิบวันนี้เป็นเท่าไร
-
-agent จะเรียก `perplexity_ask` สำหรับคำถามทั่วไป หรือ `perplexity_reason` สำหรับคำถามที่ต้องวิเคราะห์เป็นขั้นตอน
-
-| ค่า | จำเป็น | ความหมาย |
-|---|---|---|
-| `messages` | ✓ | รายการข้อความของบทสนทนา แต่ละรายการมี `role` (`system`, `user` หรือ `assistant`) และ `content` |
-| `search_recency_filter` | | ช่วงเวลาของข้อมูลที่ใช้ตอบ: `hour` `day` `week` `month` `year` |
-| `search_domain_filter` | | จำกัดหรือตัดโดเมน เช่นเดียวกับ `perplexity_search` |
-| `search_context_size` | | ปริมาณข้อมูลจากเว็บที่ใช้ตอบ: `low` (เร็วที่สุด) `medium` `high` (ครอบคลุมที่สุด) |
-
-คำตอบเป็นข้อความที่มีเลขอ้างอิง เช่น `[2][3]` ในเนื้อหา และมีรายการ URL ของแหล่งอ้างอิงอยู่ท้ายคำตอบ
-
-### 3. ค้นคว้าเชิงลึก (ได้รายงาน)
-
-ต้องตั้ง `ENABLE_PERPLEXITY_RESEARCH=true` ก่อน
-
-ตัวอย่างคำสั่ง:
-
-> ค้นคว้าเชิงลึกเรื่องแนวโน้มการใช้ RAG ในหน่วยงานรัฐ แล้วสรุปเป็นรายงาน
-
-agent จะเรียก `perplexity_research` ซึ่งรับเฉพาะ `messages`
-เครื่องมือนี้อาจใช้เวลาหลายนาทีและมีค่าใช้จ่ายสูงที่สุด จึงควรใช้เมื่อต้องการรายงานที่รวบรวมจากหลายแหล่งจริง ๆ และต้องตั้ง timeout ของ client ให้นานพอ
-
-## รูปแบบ JSON ของคำขอและผลลัพธ์
-
-mcp-perplexity มี 4 route
-
-| Route | ใช้ทำอะไร |
-|---|---|
-| `POST /mcp` | เรียกเครื่องมือทั้งหมดตามมาตรฐาน MCP (JSON-RPC 2.0) agent ใช้ route นี้ |
-| `GET /health` | ตรวจว่า server ทำงานอยู่ ไม่ตรวจ API key และไม่เสียค่าใช้จ่าย |
-| `GET /health` (พอร์ต 8081) | สถานะเปิด/ปิดของเครื่องมือแต่ละตัว ค่าตั้งที่อ่านไม่ได้ และสถานะของการบันทึกข้อมูลการใช้งาน (`http://mcp-perplexity:8081/health`) |
-| `GET /usage` (พอร์ต 8081) | ข้อมูลการใช้งาน: token เวลา และค่าใช้จ่ายของการเรียก Perplexity ทุกครั้ง เปิดเฉพาะใน docker network (`http://mcp-perplexity:8081/usage`) |
-
-### การส่งคำขอไปที่ `/mcp`
-
-ทุกคำขอต้องมี header สองตัวนี้ และ Host ที่ใช้เรียกต้องอยู่ใน `ALLOWED_HOSTS`
+Every request to `/mcp` needs these two headers, and the Host it uses must be in `ALLOWED_HOSTS`:
 
 ```
 Content-Type: application/json
 Accept: application/json, text/event-stream
 ```
 
-server นี้ตอบกลับเป็น JSON ธรรมดา (`Content-Type: application/json`) ตัวอย่างต่อไปนี้จัดบรรทัดใหม่ให้อ่านง่าย
+The server answers with plain JSON. Each tool's text is in `result.content[0].text`, and again in `result.structuredContent`
+(key `results` for `perplexity_search`, `response` for the other tools).
 
-ผลลัพธ์ของทุกเครื่องมือมีข้อความเดียวกัน 2 ที่ คือ `result.content[0].text` และ `result.structuredContent`
-โดย `structuredContent` มีคีย์ `results` สำหรับ `perplexity_search` และคีย์ `response` สำหรับเครื่องมืออื่น
-
-### ดูรายการเครื่องมือ (`tools/list`)
-
-คำขอ:
+**List the tools** (free)
 
 ```json
 {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
 ```
 
-ผลลัพธ์ (ย่อ) เมื่อเปิดครบทั้ง 4 เครื่องมือ ส่วนเครื่องมือที่ตั้งเป็น `false` จะไม่อยู่ในรายการนี้ (ไฟล์ตั้งต้นจะเหลือเฉพาะ `perplexity_search`):
+Only tools that are switched on are listed.
 
-```json
-{"jsonrpc": "2.0", "id": 1, "result": {"tools": [
-  {
-    "name": "perplexity_ask",
-    "description": "Answer a question using web-grounded AI (Perplexity Agent API, fast preset). …",
-    "inputSchema": {
-      "type": "object",
-      "properties": {
-        "messages": {"type": "array", "items": {"type": "object", "properties": {
-          "role": {"type": "string", "enum": ["system", "user", "assistant"]},
-          "content": {"type": "string"}}, "required": ["role", "content"]}},
-        "search_recency_filter": {"type": "string", "enum": ["hour", "day", "week", "month", "year"]},
-        "search_domain_filter": {"type": "array", "items": {"type": "string"}},
-        "search_context_size": {"type": "string", "enum": ["low", "medium", "high"]}
-      },
-      "required": ["messages"]
-    },
-    "outputSchema": {"type": "object", "properties": {"response": {"type": "string"}}, "required": ["response"]},
-    "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": true}
-  },
-  {"name": "perplexity_research", "…": "…"},
-  {"name": "perplexity_reason", "…": "…"},
-  {"name": "perplexity_search", "…": "…"}
-]}}
-```
-
-### ค้นหาเว็บ (`perplexity_search`)
-
-คำขอ:
+**Search**
 
 ```json
 {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {
@@ -208,7 +298,7 @@ server นี้ตอบกลับเป็น JSON ธรรมดา (`Cont
 }}
 ```
 
-ผลลัพธ์ (ย่อ):
+Reply (shortened):
 
 ```json
 {"jsonrpc": "2.0", "id": 2, "result": {
@@ -218,156 +308,187 @@ server นี้ตอบกลับเป็น JSON ธรรมดา (`Cont
 }}
 ```
 
-### ถามคำถาม (`perplexity_ask`, `perplexity_reason`, `perplexity_research`)
-
-ทั้ง 3 เครื่องมือรับคำขอและส่งผลลัพธ์รูปแบบเดียวกัน ต่างกันที่ความลึกของการค้นหา
-
-คำขอ:
+**Ask** (`perplexity_ask`, `perplexity_reason` and `perplexity_research` take the same request)
 
 ```json
 {"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {
   "name": "perplexity_ask",
   "arguments": {
-    "messages": [{"role": "user", "content": "LightRAG คืออะไร ตอบสั้น ๆ 2 ประโยค"}],
+    "messages": [{"role": "user", "content": "What is LightRAG? Answer in two sentences."}],
     "search_context_size": "low"
   }
 }}
 ```
 
-ผลลัพธ์:
+Reply (shortened):
 
 ```json
 {"jsonrpc": "2.0", "id": 3, "result": {
   "content": [{"type": "text",
-    "text": "LightRAG คือเฟรมเวิร์ก RAG ที่สร้างกราฟความรู้จากเอกสาร แล้วผสานการค้นหาด้วยกราฟและเวกเตอร์เพื่อดึงข้อมูลที่เชื่อมโยงกัน[2][3] …\n\nCitations:\n[1] https://www.adsfit.co.th/blog/…\n[2] https://arxiv.org/html/2410.05779v1\n[3] https://github.com/hkuds/lightrag\n…"}],
-  "structuredContent": {"response": "LightRAG คือเฟรมเวิร์ก RAG … Citations: …"}
+    "text": "LightRAG is a RAG framework that builds a knowledge graph from documents and combines graph and vector retrieval …[2][3]\n\nCitations:\n[1] …\n[2] https://arxiv.org/html/2410.05779v1\n[3] https://github.com/hkuds/lightrag"}],
+  "structuredContent": {"response": "LightRAG is a RAG framework … Citations: …"}
 }}
 ```
 
-### ข้อผิดพลาด
-
-| กรณี | ผลลัพธ์ |
-|---|---|
-| Host ที่ใช้เรียกไม่อยู่ใน `ALLOWED_HOSTS` | HTTP 421 `{"jsonrpc": "2.0", "error": {"code": -32000, "message": "Misdirected request"}, "id": null}` |
-| API key ผิดหรือหมดอายุ | `"isError": true` และ `text` เป็น `Perplexity API error: 401 Unauthorized {"error":{"message":"Invalid API key provided. …"}}` |
-| ไม่ส่งค่าที่จำเป็น | `"isError": true` และ `text` เป็น `MCP error -32602: Input validation error: Invalid arguments for tool perplexity_ask: Required at messages` |
-| เรียกเครื่องมือที่ไม่มี | `"isError": true` และ `text` เป็น `MCP error -32602: Tool <ชื่อ> not found` |
-| ไม่ได้กำหนด `PERPLEXITY_API_KEY` | container ไม่เริ่มทำงาน และ `docker logs mcp-perplexity` แสดง `ERROR: PERPLEXITY_API_KEY environment variable is required` |
-
-### ตรวจสถานะ (`GET /health`)
-
-```json
-{"status": "ok", "service": "perplexity-mcp-server"}
-```
-
-### ข้อมูลการใช้งาน (`GET /usage`)
-
-Perplexity ส่งจำนวน token และค่าใช้จ่ายกลับมาพร้อมทุกคำตอบ แต่ Perplexity MCP server ทางการไม่ได้เก็บไว้
-repo นี้จึงเพิ่ม `usage-hook.mjs` ซึ่งโหลดก่อน server ทางการ (`node --import`) อ่านสำเนาของคำตอบจาก Perplexity ทุกครั้ง โดยไม่แก้ไขสิ่งที่ส่งให้ agent
-แล้วบันทึกลงไฟล์ `usage-<วันที่>.jsonl` ใน docker volume `usage` เพื่อใช้วิจัยและปรับประสิทธิภาพ ระเบียนไม่มีคำถามหรือคำตอบ
-
-| ค่า | ความหมาย |
-|---|---|
-| `since`, `until` | ช่วงเวลา (epoch วินาที) หากไม่ระบุจะส่งทั้งหมด |
-| `limit` | จำนวนระเบียนสูงสุด (ล่าสุด) ค่าเริ่มต้น 50000 |
-
-ผลลัพธ์ของ `GET http://mcp-perplexity:8081/usage` (ย่อ) หลังเรียก `perplexity_ask` หนึ่งครั้ง:
-
-```json
-{
-  "schema": "harness-usage/1",
-  "environment": {"component": "mcp-perplexity", "version": "1.3.0", "host": "2efc…", "node": "v22.23.3", "cpu_count": 20, "mem_total_mb": 11816},
-  "records": [
-    {"kind": "llm_call", "tool": "perplexity_ask", "model": "openai/gpt-6-luna", "provider": "perplexity",
-     "duration_s": 2.342, "ttfb_s": 0.803, "input_tokens": 3, "cache_write_tokens": 5705, "cache_read_tokens": 0,
-     "output_tokens": 16, "reasoning_tokens": 0, "total_tokens": 5724, "cost_usd": 0.00172, "status": "ok",
-     "detail": {"endpoint": "v1/agent", "preset": "fast", "search_queries": 1, "search_results": 5,
-                "usage_raw": {"cost": {"tool_calls_cost": 0.001, "cache_creation_cost": 0.00071, "total_cost": 0.00172, "…": "…"}, "…": "…"}}}
-  ]
-}
-```
-
-- `perplexity_search` บันทึกเป็น `search_call` (Search API ไม่รายงาน token จึงมีเฉพาะเวลาและจำนวนผลการค้นหา) ส่วนเครื่องมืออื่นบันทึกเป็น `llm_call`
-- `detail.usage_raw` คือข้อมูลการใช้งานตามที่ Perplexity ส่งมาทั้งหมด เช่น ค่าใช้จ่ายของการค้นเว็บ (`tool_calls_cost`) ซึ่งมักสูงกว่าค่า token
-- ชื่อช่องข้อมูลเป็นแบบเดียวกับ plugin `usage-telemetry` ของ [osint-harness-profile](https://github.com/chacharin/osint-harness-profile) และ MCP ตัวอื่นของชุดนี้
-- hook นี้ทำงานเมื่อเรียก Perplexity โดยตรง หากกำหนด `PERPLEXITY_PROXY` server ทางการจะใช้ช่องทางอื่นที่ hook ไม่เห็น จึงจะไม่มีข้อมูลการใช้งาน
-
-### ทดลองด้วย curl
+**With curl** (this calls Perplexity and is billed; use `"method":"tools/list"` without `params` to test for free)
 
 ```bash
-curl http://127.0.0.1:8803/mcp \
-  -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"perplexity_search","arguments":{"query":"LightRAG HKUDS GitHub","max_results":2}}}'
+curl http://127.0.0.1:8803/mcp -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"perplexity_search","arguments":{"query":"LightRAG HKUDS GitHub","max_results":2}}}'
 ```
 
-คำสั่งนี้เรียก Perplexity จริงและคิดค่าใช้จ่าย หากต้องการทดสอบโดยไม่เสียค่าใช้จ่าย ให้เปลี่ยน `"method":"tools/call"` เป็น `"method":"tools/list"` (และลบ `params` ออก)
-บน Windows คำสั่ง curl อาจส่งภาษาไทยที่พิมพ์ในบรรทัดคำสั่งผิดเพี้ยนเป็น `?` ให้บันทึก JSON ของคำขอเป็นไฟล์ UTF-8 เช่น `request.json` แล้วส่งด้วย `-d @request.json` แทน
+On Windows, curl may turn non-English text typed on the command line into `?`. Save the request as a UTF-8 file such as
+`request.json` and send it with `-d @request.json`.
 
-## การปรับให้เหมาะกับงานของคุณ
+## Turning tools on and off
 
-ค่าต่อไปนี้เป็นตัวแปรในไฟล์ `.env` ซึ่งไม่จำเป็นต้องกำหนด หากไม่กำหนด ระบบจะใช้ค่าเริ่มต้น
-เมื่อต้องการปรับ ให้เพิ่มบรรทัด `ชื่อตัวแปร=ค่า` ลงในไฟล์ `.env` แล้วสั่ง `docker compose up -d` (คำอธิบายและค่าเริ่มต้นของทุกตัวแปรดูได้ใน [`.env.example`](.env.example))
+Each tool has its own line in `.env`. `true`/`false`, `1`/`0`, `yes`/`no` and `on`/`off` all work. The example file has:
 
-- **`PERPLEXITY_TIMEOUT_MS`** เวลารอคำตอบจาก Perplexity สูงสุด (มิลลิวินาที) ค่าเริ่มต้น 5 นาที ควรเพิ่มหากใช้ `perplexity_research` กับหัวข้อที่กว้างมาก
-- **`PERPLEXITY_BASE_URL` และ `PERPLEXITY_PROXY`** ใช้เมื่อต้องเรียก Perplexity ผ่าน proxy ขององค์กร
-- **`ENABLE_PERPLEXITY_SEARCH`, `_ASK`, `_REASON`, `_RESEARCH`** เปิดหรือปิดเครื่องมือแต่ละตัว (ดู[เปิด/ปิดเครื่องมือทีละตัว](#เปิดปิดเครื่องมือทีละตัว))
-- **`PERPLEXITY_LOG_LEVEL`** ระดับของ log (`DEBUG` `INFO` `WARN` `ERROR`) ใช้ `DEBUG` เมื่อต้องการหาสาเหตุของปัญหา
-- **`ALLOWED_HOSTS` และ `ALLOWED_ORIGINS`** ชื่อ host ที่อนุญาตให้เรียก และโดเมนของ MCP client แบบเว็บที่อนุญาตให้เรียกข้ามโดเมน
-- **`USAGE_LOG`, `USAGE_DIR`, `USAGE_PORT` และ `USAGE_TOKEN`** การบันทึกข้อมูลการใช้งาน (ดู[ข้อมูลการใช้งาน](#ข้อมูลการใช้งาน-get-usage))
-
-### เปิด/ปิดเครื่องมือทีละตัว
-
-แต่ละเครื่องมือมีตัวแปรของตัวเองใน `.env` รับค่า `true`/`false`, `1`/`0`, `yes`/`no`, `on`/`off`
-ไฟล์ตั้งต้น [`.env.example`](.env.example) ตั้งไว้ดังนี้ (เปิดเฉพาะ `perplexity_search`):
-
-```bash
+```
 ENABLE_PERPLEXITY_SEARCH=true
 ENABLE_PERPLEXITY_ASK=false
 ENABLE_PERPLEXITY_REASON=false
 ENABLE_PERPLEXITY_RESEARCH=false
 ```
 
-ตัวแปรที่ไม่ได้กำหนดใน `.env` เลยจะถือว่าเปิด (`true`) ระบบที่ติดตั้งก่อนมีตัวแปรเหล่านี้จึงยังมีครบทั้ง 4 เครื่องมือเหมือนเดิม
+- A tool that is off is **not in the tool list**, so the agent never sees it, its description costs no tokens, and a direct call
+  is refused. This works the same for every client.
+- A line that is missing counts as `true`, so an older `.env` without these lines keeps all four tools.
+- A value that cannot be read, such as `maybe`, keeps the tool on and is reported in the log and at `GET :8081/health`.
+- Apply a change with `docker compose up -d`, then reconnect or restart the client. Clients read the tool list when they connect.
 
-- เครื่องมือที่ปิดจะ**ไม่อยู่ในรายการเครื่องมือ** (`tools/list`) agent จึงไม่เห็นและไม่เสีย token ค่าคำอธิบายเครื่องมือ และถ้าเรียกตรง ๆ จะถูกปฏิเสธ ผลนี้เหมือนกันทุก client
-- แก้แล้วสั่ง `docker compose up -d` แล้วรีสตาร์ต agent หรือโหลด MCP ใหม่ (ใน Hermes ใช้ `/reload-mcp` หรือรีสตาร์ต gateway) เพราะ client อ่านรายการเครื่องมือตอนเชื่อมต่อเท่านั้น
-- ค่าที่อ่านไม่ได้ เช่น `ENABLE_PERPLEXITY_ASK=maybe` ระบบจะคงเครื่องมือนั้นเปิดไว้ และแจ้งใน log กับ `GET http://mcp-perplexity:8081/health`
-- ตรวจสถานะได้ที่ `GET http://mcp-perplexity:8081/health` ซึ่งตอบ `{"ok": true, "tools": {"perplexity_search": true, "perplexity_ask": false, …}, "problems": [], …}`
+Check the switches at `http://mcp-perplexity:8081/health` (from the docker network):
 
-## ความปลอดภัย
+```json
+{"ok": true, "tools": {"perplexity_search": true, "perplexity_ask": false, "…": "…"}, "problems": [], "…": "…"}
+```
 
-- **ระบบนี้ไม่มีการยืนยันตัวตน** ผู้ที่เข้าถึงพอร์ตนี้ได้จะใช้โควตา Perplexity ของคุณได้ทันที ค่าเริ่มต้นเปิดให้เครื่องอื่นในเครือข่ายเข้าถึงได้ (`PUBLISH_ADDR=0.0.0.0`)
-  หากไม่จำเป็น ให้กำหนด `PUBLISH_ADDR=127.0.0.1` ซึ่ง agent ที่อยู่ใน docker network เดียวกันจะยังเรียกใช้ได้ตามปกติ
-- `ALLOWED_HOSTS` ช่วยป้องกันการโจมตีแบบ DNS rebinding ผ่านเว็บเบราว์เซอร์ จึงควรใส่เฉพาะชื่อที่ใช้งานจริง แต่ไม่ได้ป้องกันผู้ที่เรียกตรงจากเครือข่าย
-- ควรตั้งวงเงินการใช้งานของ API key ไว้ที่ https://console.perplexity.ai เพื่อจำกัดความเสียหายหากมีผู้ใช้โควตาโดยไม่ได้รับอนุญาต
-- API key ถูกเก็บไว้ในไฟล์ `.env` เท่านั้น ไม่ถูกส่งให้ agent และไฟล์นี้จะไม่ถูกส่งขึ้น git
-- พอร์ตข้อมูลการใช้งาน (8081) ไม่ได้เปิดออกนอก docker network และไม่มีคำถามหรือคำตอบ หากต้องการให้ผู้เรียกต้องส่ง token ให้กำหนด `USAGE_TOKEN`
+## Usage and cost data
 
-## สำหรับนักพัฒนา
+The log is JSON Lines in the `usage` volume, one file per day (`usage-YYYY-MM-DD.jsonl`), in the `harness-usage/1` schema. It
+holds **numbers only**: no questions, answers or search terms.
 
-โปรเจกต์นี้ใช้ Perplexity MCP server ทางการโดยไม่แก้ไข มีโค้ดของตัวเองเพียง `tools-hook.mjs` และ `usage-hook.mjs` ซึ่งโหลดก่อน server ด้วย `node --import`
-
-| ไฟล์ | หน้าที่ |
-|---|---|
-| `Dockerfile` | สร้าง image จาก `node` แล้วติดตั้ง Perplexity MCP server ตาม `package-lock.json` และโหลด `usage-hook.mjs` ก่อน server |
-| `tools-hook.mjs` | เปิด/ปิดเครื่องมือแต่ละตัวตาม `ENABLE_PERPLEXITY_*` (ปิดเครื่องมือทันทีหลัง server ลงทะเบียน ผ่าน `McpServer.registerTool` ของ MCP SDK) |
-| `usage-hook.mjs` | บันทึก token เวลา และค่าใช้จ่ายของการเรียก Perplexity ทุกครั้ง และให้บริการ `GET /usage` และ `GET /health` (พอร์ต 8081) |
-| `tests/` | ทดสอบ `tools-hook.mjs` กับ server ทางการ และ `usage-hook.mjs` กับ Perplexity จำลอง (ไม่เสียค่าใช้จ่าย): `docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 sh -c "npm ci && npm test"` |
-| `docker-compose.yml` | กำหนดพอร์ต docker network และอ่านการตั้งค่าจาก `.env` |
-| `package.json`, `package-lock.json` | ล็อกเวอร์ชันของ Perplexity MCP server และไลบรารีย่อยทุกตัว ทุกเครื่องที่ build จึงได้ไลบรารีชุดเดียวกัน |
-
-### การอัปเดตเวอร์ชันของ Perplexity MCP server
+Read it from a container on the docker network, for example:
 
 ```bash
-docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 \
-  sh -c "npm install --package-lock-only --no-audit --no-fund @perplexity-ai/mcp-server@<เวอร์ชันใหม่>"
+docker run --rm --network agent_network curlimages/curl -s http://mcp-perplexity:8081/usage
+```
+
+| Parameter | Meaning |
+|---|---|
+| `since`, `until` | Time range in Unix seconds. Without them, everything is returned |
+| `limit` | Most records returned, default 50,000 (the newest are kept) |
+
+| `kind` | Written for | Main fields |
+|---|---|---|
+| `search_call` | `perplexity_search` | `duration_s`, `status`, number of results (the Search API reports no tokens) |
+| `llm_call` | the other three tools | `model`, `duration_s`, `ttfb_s`, `input_tokens`, `output_tokens`, `reasoning_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cost_usd`, `detail.preset`, `detail.search_queries`, `detail.usage_raw` |
+
+Example record (shortened) after one `perplexity_ask` call:
+
+```json
+{"kind": "llm_call", "tool": "perplexity_ask", "model": "openai/gpt-6-luna", "provider": "perplexity",
+ "duration_s": 2.342, "ttfb_s": 0.803, "input_tokens": 3, "cache_write_tokens": 5705, "output_tokens": 16,
+ "total_tokens": 5724, "cost_usd": 0.00172, "status": "ok",
+ "detail": {"endpoint": "v1/agent", "preset": "fast", "search_queries": 1, "search_results": 5,
+            "usage_raw": {"cost": {"tool_calls_cost": 0.001, "total_cost": 0.00172, "…": "…"}}}}
+```
+
+- `detail.usage_raw` is the full usage report from Perplexity. The web-search part (`tool_calls_cost`) is often larger than the
+  token cost.
+- The hook only sees direct calls to Perplexity. With `PERPLEXITY_PROXY` set, the official server takes another path and no usage
+  is recorded.
+- Turn logging off with `USAGE_LOG=false`.
+
+## Configuration reference
+
+All settings live in `.env`. Each one is also explained in [.env.example](.env.example). After a change, run `docker compose up -d`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `PERPLEXITY_API_KEY` | (required) | Your Perplexity API key. The server does not start without it |
+| `PERPLEXITY_TIMEOUT_MS` | `300000` | Longest wait for Perplexity (ms). Raise it for very broad research topics |
+| `PERPLEXITY_BASE_URL` | `https://api.perplexity.ai` | Change it to go through a company gateway |
+| `PERPLEXITY_PROXY` | (empty) | Proxy for internet access. Empty = use `HTTPS_PROXY` / `HTTP_PROXY` if set |
+| `PERPLEXITY_LOG_LEVEL` | `ERROR` | `DEBUG`, `INFO`, `WARN` or `ERROR` |
+| `BIND_ADDRESS` | `127.0.0.1` | Must be `0.0.0.0` in Docker (the example sets it) |
+| `ALLOWED_HOSTS` | (see example) | Every `host:port` used to reach the server, comma-separated, exact match. Others get HTTP 421 |
+| `ALLOWED_ORIGINS` | (empty) | Page addresses of browser-based clients allowed to call across origins |
+| `PORT` | `8080` | Port inside the container. If you change it, also change `docker-compose.yml` and `ALLOWED_HOSTS` |
+| `ENABLE_PERPLEXITY_SEARCH` | `true` | Offer `perplexity_search` |
+| `ENABLE_PERPLEXITY_ASK` | `true` (`false` in the example) | Offer `perplexity_ask` |
+| `ENABLE_PERPLEXITY_REASON` | `true` (`false` in the example) | Offer `perplexity_reason` |
+| `ENABLE_PERPLEXITY_RESEARCH` | `true` (`false` in the example) | Offer `perplexity_research` |
+| `USAGE_LOG` | `true` | Keep the usage log |
+| `USAGE_DIR` | `/app/usage` | Folder of the usage log |
+| `USAGE_PORT` | `8081` | Port of `GET /usage` and the switch health check (`0` = off). Not published outside Docker |
+| `USAGE_TOKEN` | (empty) | When set, `GET /usage` requires `Authorization: Bearer <token>` |
+| `DOCKER_NETWORK` | `agent_network` | Docker network shared with your agents |
+| `PUBLISH_ADDR` | `0.0.0.0` | `0.0.0.0` = other machines can connect, `127.0.0.1` = this machine only |
+| `PUBLISH_PORT` | `8803` | Port on your machine. If you change it, update `ALLOWED_HOSTS` |
+
+## Security
+
+- **The MCP endpoint has no login.** Anyone who can reach the port can spend your Perplexity balance. The default
+  (`PUBLISH_ADDR=0.0.0.0`) lets other machines connect. If you don't need that, set `PUBLISH_ADDR=127.0.0.1`; agents on the
+  docker network still work.
+- **Set a spending limit** for the key at [console.perplexity.ai](https://console.perplexity.ai) to cap the damage of misuse.
+- `ALLOWED_HOSTS` blocks DNS-rebinding attacks from web browsers. List only the names you really use. It does not stop direct
+  calls from your network.
+- **Never commit `.env`.** It is in `.gitignore`. The key stays in the container; agents never see it.
+- The usage port (8081) is not published outside Docker and holds no questions or answers. Set `USAGE_TOKEN` to require a token.
+- The container runs as a non-root user.
+- Search results and answers come from the open web. Tell your agent to treat them as information, not as instructions.
+
+## Troubleshooting
+
+| What you see | Cause and fix |
+|---|---|
+| `network agent_network declared as external, but could not be found` | Run `docker network create agent_network`, or set `DOCKER_NETWORK` to an existing network |
+| `port is already allocated` | Another program uses 8803. Set `PUBLISH_PORT` to a free port and update `ALLOWED_HOSTS` |
+| The container stops; the log says `PERPLEXITY_API_KEY environment variable is required` | Put the key in `.env`, then `docker compose up -d` |
+| HTTP 421 `Misdirected request` | The `host:port` in the URL is not in `ALLOWED_HOSTS`. Add it exactly, then `docker compose up -d` |
+| `Perplexity API error: 401 Unauthorized` | The key is wrong or was revoked. Create a new one at console.perplexity.ai |
+| The client reports a timeout during research | Raise the client timeout (600 s or more) and, if needed, `PERPLEXITY_TIMEOUT_MS` |
+| `Tool perplexity_ask disabled` or `not found` | The tool is switched off. Set its `ENABLE_…` line to `true`, run `docker compose up -d`, reconnect the client |
+| A tool is missing in the client | Check `GET :8081/health`, then reconnect the client |
+| A browser-based client is refused | Add the page address to `ALLOWED_ORIGINS` |
+| `/usage` has no records | `PERPLEXITY_PROXY` is set (the hook cannot see those calls), or `USAGE_LOG=false` |
+
+See the server's own log with `docker compose logs -f`. Set `PERPLEXITY_LOG_LEVEL=DEBUG` for more detail.
+
+## Development
+
+The official server is used as it is. This project's own code is two hook files loaded before it with `node --import`.
+
+| File | Contents |
+|---|---|
+| `Dockerfile` | Builds from the `node` image, installs the server from `package-lock.json`, loads both hooks, runs as a non-root user |
+| `tools-hook.mjs` | Switches each tool on or off from `ENABLE_PERPLEXITY_*` (wraps `McpServer.registerTool` of the MCP SDK and disables a tool right after it is registered) |
+| `usage-hook.mjs` | Logs tokens, time and cost of every Perplexity call; serves `GET /usage` and `GET /health` on port 8081 |
+| `tests/` | Tests `tools-hook.mjs` against the real server and `usage-hook.mjs` against a fake Perplexity (free) |
+| `docker-compose.yml` | Port, docker network, usage volume, settings from `.env` |
+| `package.json`, `package-lock.json` | Pin the server version and every library |
+
+Run the tests (no Node.js needed on your machine):
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 sh -c "npm ci && npm test"
+```
+
+### Updating the Perplexity MCP server
+
+```bash
+docker run --rm -v "$PWD:/w" -w /w node:22.23.3-alpine3.24 sh -c "npm install --package-lock-only --no-audit --no-fund @perplexity-ai/mcp-server@<new-version>"
+```
+
+```bash
 docker compose up -d --build
 ```
 
-จากนั้น commit ไฟล์ `package.json` และ `package-lock.json` ที่เปลี่ยนไป
-หากใช้ PowerShell ให้เปลี่ยน `$PWD` เป็น `${PWD}` และใช้ `` ` `` แทน `\` สำหรับขึ้นบรรทัดใหม่
+Run the tests, then commit the changed `package.json` and `package-lock.json`. In PowerShell, write `${PWD}` instead of `$PWD`.
 
-## สัญญาอนุญาต
+## License
 
-[MIT](LICENSE) © 2026 Chacharin Lertyosbordin
-Perplexity MCP server เป็นลิขสิทธิ์ของ Perplexity AI ภายใต้สัญญาอนุญาต MIT ([ซอร์สโค้ด](https://github.com/perplexityai/modelcontextprotocol))
+[MIT](LICENSE) © 2026 Chacharin Lertyosbordin.
+The Perplexity MCP server is © Perplexity AI under the MIT license ([source](https://github.com/perplexityai/modelcontextprotocol)).
+Perplexity is a trademark of its owner. This project is not affiliated with Perplexity AI.
